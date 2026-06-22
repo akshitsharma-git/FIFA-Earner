@@ -32,6 +32,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
 .btn svg{width:20px;height:20px}
 .live{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;letter-spacing:.6px}
 .live .dot{width:7px;height:7px;border-radius:50%;background:#e50914}
+
+#err{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:14px;text-align:center;display:none;z-index:30;padding:16px}
+#err.on{display:block}
 </style>
 </head>
 <body>
@@ -45,6 +48,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
   </div>
 
   <div id="spinner"></div>
+  <div id="err">⚠️ Stream unavailable.<br>Please try again.</div>
 
   <div id="bar">
     <div id="track"><div id="fill"></div></div>
@@ -69,9 +73,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
 
 <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
 <script>
-const STREAM_URL = "";
-const AD_LINK    = "https://www.effectivecpmnetwork.com/zf2t6d5h?key=672b8fd8d1cc28fa982c9a09616e9ba6";
+const AD_LINK = "https://www.effectivecpmnetwork.com/zf2t6d5h?key=672b8fd8d1cc28fa982c9a09616e9ba6";
 
+// Player init without a source — loaded dynamically
 const player = videojs('v', {
   controls: false, autoplay: false, liveui: true,
   html5: {
@@ -81,25 +85,65 @@ const player = videojs('v', {
       BACK_BUFFER_LENGTH: 5, bandwidth: 1500000,
       enableLowInitialPlaylist: true, smoothQualityChange: true,
       fastQualityChange: true, overrideNative: true
-    },
-    hls: {
-      beforeRequest(o) {
-        o.headers = { ...o.headers, 'Referer': new URL(STREAM_URL).origin + '/' };
-        return o;
-      }
     }
   }
 });
 
 let loaded = false;
-document.getElementById('gate').addEventListener('click', () => {
+const spinner = document.getElementById('spinner');
+const errEl   = document.getElementById('err');
+
+async function fetchStreamUrl() {
+  // Always fetch fresh — no caching so token is never stale
+  const res = await fetch('/stream', { cache: 'no-store' });
+  if (!res.ok) throw new Error(`/stream returned ${res.status}`);
+  const { url } = await res.json();
+  if (!url) throw new Error('No URL in response');
+  return url;
+}
+
+document.getElementById('gate').addEventListener('click', async () => {
   window.open(AD_LINK, '_blank');
   document.getElementById('gate').style.display = 'none';
-  if (!loaded) { loaded = true; player.src({ src: STREAM_URL, type: 'application/x-mpegURL' }); }
-  player.muted(false);
-  const p = player.play();
-  if (p?.catch) p.catch(() => { player.muted(true); player.play(); syncMuteIcon(); });
-  syncMuteIcon(); showUI();
+  spinner.classList.add('on');
+  errEl.classList.remove('on');
+
+  try {
+    const streamUrl = await fetchStreamUrl();
+
+    // Update HLS beforeRequest referer dynamically
+    player.ready(() => {
+      const tech = player.tech({ IWillNotUseThisInPlugins: true });
+      if (tech?.vhs) {
+        tech.vhs.xhr.beforeRequest = (options) => {
+          try { options.headers = { ...options.headers, 'Referer': new URL(streamUrl).origin + '/' }; } catch(_) {}
+          return options;
+        };
+      }
+    });
+
+    if (!loaded) {
+      loaded = true;
+      player.src({ src: streamUrl, type: 'application/x-mpegURL' });
+    }
+
+    player.muted(false);
+    const p = player.play();
+    if (p?.catch) p.catch(() => { player.muted(true); player.play(); syncMuteIcon(); });
+    syncMuteIcon();
+    showUI();
+
+  } catch (err) {
+    console.error('Stream fetch failed:', err);
+    spinner.classList.remove('on');
+    errEl.classList.add('on');
+    // Allow retry by re-showing gate after 3s
+    setTimeout(() => {
+      loaded = false;
+      errEl.classList.remove('on');
+      document.getElementById('gate').style.display = 'flex';
+    }, 3000);
+  }
 });
 
 function togglePlay(e) {
@@ -135,11 +179,29 @@ function catchUp() {
   } catch(_){}
 }
 
-player.on('play',    () => setIcon(document.getElementById('pico'), true));
+player.on('play',    () => { setIcon(document.getElementById('pico'), true); spinner.classList.remove('on'); });
 player.on('pause',   () => { setIcon(document.getElementById('pico'), false); showUI(true); });
-player.on('waiting', () => document.getElementById('spinner').classList.add('on'));
-player.on('playing', () => document.getElementById('spinner').classList.remove('on'));
-player.on('canplay', () => document.getElementById('spinner').classList.remove('on'));
+player.on('waiting', () => spinner.classList.add('on'));
+player.on('playing', () => spinner.classList.remove('on'));
+player.on('canplay', () => spinner.classList.remove('on'));
+player.on('error',   () => {
+  spinner.classList.remove('on');
+  errEl.classList.add('on');
+  // Auto-retry with a fresh URL after 4s on playback error
+  setTimeout(async () => {
+    errEl.classList.remove('on');
+    spinner.classList.add('on');
+    try {
+      const streamUrl = await fetchStreamUrl();
+      loaded = true;
+      player.src({ src: streamUrl, type: 'application/x-mpegURL' });
+      player.play();
+    } catch(_) {
+      spinner.classList.remove('on');
+      errEl.classList.add('on');
+    }
+  }, 4000);
+});
 
 let hTimer;
 const bar = document.getElementById('bar');

@@ -1,12 +1,12 @@
-name: Update DSports Stream URL
+name: Update ASports Stream URL
 
 permissions:
   contents: write
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # every 30 minutes
-  workflow_dispatch:          # manual trigger from Actions tab
+    - cron: '*/10 * * * *'  # every 10 minutes
+  workflow_dispatch:
 
 jobs:
   update:
