@@ -5,8 +5,8 @@ permissions:
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # every 30 minutes, 24/7
-  workflow_dispatch:           # also allow manual trigger from Actions tab
+    - cron: '*/30 * * * *'  # every 30 minutes
+  workflow_dispatch:          # manual trigger from Actions tab
 
 jobs:
   update:
@@ -23,15 +23,17 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Fetch DSports URL from API
+      - name: Fetch DSports URL and build proxy URL
         id: capture
         run: |
           node << 'SCRIPT'
           const https = require('https');
 
-          const API = 'https://iptv-eldbert.xyz/iptv/channels.json';
+          // ── YOUR Vercel proxy base URL (set this after deploying) ──
+          const PROXY_BASE = process.env.VERCEL_PROXY_URL || 'https://your-proxy.vercel.app';
 
-          console.log('🔍 Fetching channel list from API...');
+          const API = 'https://iptv-eldbert.xyz/iptv/channels.json';
+          console.log('🔍 Fetching channel list...');
 
           https.get(API, (res) => {
             let data = '';
@@ -41,17 +43,16 @@ jobs:
                 const channels = JSON.parse(data);
                 console.log(`📺 Total channels: ${channels.length}`);
 
-                // ── Priority order: try FIFA World Cup group first, then any DSports ──
                 let match = null;
 
-                // 1) FIFA World Cup group, DSports (not DSports Plus)
+                // Priority 1: FIFA World Cup group, DSports (not Plus)
                 match = channels.find(ch =>
                   ch.group === 'FIFA World Cup' &&
                   ch.name.includes('DSports') &&
                   !ch.name.includes('Plus')
                 );
 
-                // 2) Fallback: any active DSports channel
+                // Priority 2: any active DSports
                 if (!match) {
                   match = channels.find(ch =>
                     ch.name.includes('DSports') &&
@@ -60,33 +61,32 @@ jobs:
                   );
                 }
 
-                // 3) Last resort: any DSports
+                // Priority 3: any DSports at all
                 if (!match) {
                   match = channels.find(ch => ch.name.includes('DSports'));
                 }
 
                 if (!match) {
-                  console.error('❌ No DSports channel found in API response');
-                  // Log available groups to help debug
+                  console.error('❌ No DSports channel found');
                   const groups = [...new Set(channels.map(c => c.group))];
                   console.log('Available groups:', groups.join(', '));
                   process.exit(1);
                 }
 
-                console.log(`✅ Found: ${match.name} | Group: ${match.group} | Status: ${match.status}`);
+                console.log(`✅ Found: ${match.name} | Group: ${match.group}`);
 
-                // Wrap in proxy to handle Referer + CORS
+                // Build URL pointing to YOUR Vercel proxy
                 const encoded = encodeURIComponent(match.url);
-                const proxyUrl = `https://iptv-eldbert.xyz/proxy?url=${encoded}`;
+                const proxyUrl = `${PROXY_BASE}/proxy?url=${encoded}`;
 
-                console.log(`\n🔗 Proxy URL:\n${proxyUrl}\n`);
+                console.log(`\n🔗 Final URL:\n${proxyUrl}\n`);
 
                 const fs = require('fs');
                 fs.appendFileSync(process.env.GITHUB_OUTPUT, `stream_url=${proxyUrl}\n`);
                 process.exit(0);
 
               } catch (err) {
-                console.error('❌ JSON parse error:', err.message);
+                console.error('❌ Parse error:', err.message);
                 process.exit(1);
               }
             });
@@ -95,6 +95,8 @@ jobs:
             process.exit(1);
           });
           SCRIPT
+        env:
+          VERCEL_PROXY_URL: ${{ secrets.VERCEL_PROXY_URL }}
 
       - name: Update index.html if URL changed
         if: success()
@@ -106,13 +108,13 @@ jobs:
           echo "New     : $NEW_URL"
 
           if [ -z "$NEW_URL" ]; then
-            echo "⚠️ No URL captured, skipping update"
+            echo "⚠️ No URL captured, skipping"
             echo "URL_UPDATED=false" >> $GITHUB_ENV
           elif [ "$CURRENT_URL" = "$NEW_URL" ]; then
-            echo "✅ URL unchanged, no commit needed"
+            echo "✅ URL unchanged"
             echo "URL_UPDATED=false" >> $GITHUB_ENV
           else
-            echo "🔄 URL changed — updating index.html"
+            echo "🔄 Updating index.html"
             sed -i "s|const STREAM_URL = \"[^\"]*\"|const STREAM_URL = \"$NEW_URL\"|g" index.html
             echo "URL_UPDATED=true" >> $GITHUB_ENV
           fi
@@ -123,5 +125,5 @@ jobs:
           git config user.name  "stream-bot[bot]"
           git config user.email "stream-bot@users.noreply.github.com"
           git add index.html
-          git commit -m "chore: update DSports stream URL [$(date -u +'%Y-%m-%d %H:%M UTC')] [skip ci]"
+          git commit -m "chore: update stream URL [$(date -u +'%Y-%m-%d %H:%M UTC')] [skip ci]"
           git push origin main
