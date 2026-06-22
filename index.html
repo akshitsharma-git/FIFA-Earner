@@ -12,29 +12,30 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
 .video-js{width:100%!important;height:100%!important}
 .vjs-control-bar,.vjs-big-play-button,.vjs-loading-spinner,.vjs-poster{display:none!important}
 
-#gate{position:absolute;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:50;cursor:pointer}
+#gate{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;cursor:pointer;gap:16px}
 #gate-btn{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.95);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 8px rgba(255,255,255,.08)}
 #gate-btn svg{width:30px;height:30px;margin-left:4px}
+#match-title{color:rgba(255,255,255,.7);font-size:13px;font-weight:500;letter-spacing:.4px;text-align:center;padding:0 24px}
 
 #spinner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;display:none;z-index:15;animation:spin .8s linear infinite}
 #spinner.on{display:block}
 @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 
+#err{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:14px;text-align:center;display:none;z-index:30;padding:16px;line-height:1.8;cursor:pointer}
+#err.on{display:block}
+
 #bar{position:absolute;bottom:0;left:0;right:0;padding:28px 14px 10px;background:linear-gradient(to top,rgba(0,0,0,.75),transparent);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
 #bar.on{opacity:1;pointer-events:auto}
-
 #track{position:relative;height:3px;background:rgba(255,255,255,.25);border-radius:2px;margin-bottom:8px;overflow:hidden}
 #fill{position:absolute;inset:0;background:#e50914;border-radius:2px}
-
 #row{display:flex;align-items:center;justify-content:space-between;color:#fff}
 .left,.right{display:flex;align-items:center;gap:12px}
 .btn{background:none;border:none;color:#fff;cursor:pointer;padding:5px;display:flex;align-items:center;touch-action:manipulation}
 .btn svg{width:20px;height:20px}
 .live{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;letter-spacing:.6px}
-.live .dot{width:7px;height:7px;border-radius:50%;background:#e50914}
-
-#err{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:14px;text-align:center;display:none;z-index:30;padding:16px}
-#err.on{display:block}
+.live .dot{width:7px;height:7px;border-radius:50%;background:#e50914;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#match-label{font-size:11px;color:rgba(255,255,255,.65);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -45,10 +46,11 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
     <div id="gate-btn">
       <svg viewBox="0 0 24 24" fill="#000"><polygon points="6,4 20,12 6,20"/></svg>
     </div>
+    <div id="match-title">Loading match...</div>
   </div>
 
   <div id="spinner"></div>
-  <div id="err">⚠️ Stream unavailable.<br>Please try again.</div>
+  <div id="err">⚠️ Stream unavailable.<br><span style="font-size:12px;opacity:.6">Tap to retry</span></div>
 
   <div id="bar">
     <div id="track"><div id="fill"></div></div>
@@ -60,6 +62,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
         <button class="btn" onclick="toggleMute(event)">
           <svg id="mico" viewBox="0 0 24 24" fill="#fff"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="#fff" stroke-width="1.6" fill="none"/><path d="M19 6a8 8 0 0 1 0 12" stroke="#fff" stroke-width="1.6" fill="none"/></svg>
         </button>
+        <div id="match-label"></div>
       </div>
       <div class="right">
         <div class="live"><span class="dot"></span>LIVE</div>
@@ -73,10 +76,13 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
 
 <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
 <script>
-  
 const AD_LINK = "https://www.effectivecpmnetwork.com/zf2t6d5h?key=672b8fd8d1cc28fa982c9a09616e9ba6";
 
-// Player init without a source — loaded dynamically
+const spinner = document.getElementById('spinner');
+const errEl   = document.getElementById('err');
+const bar     = document.getElementById('bar');
+const gate    = document.getElementById('gate');
+
 const player = videojs('v', {
   controls: false, autoplay: false, liveui: true,
   html5: {
@@ -90,42 +96,44 @@ const player = videojs('v', {
   }
 });
 
-let loaded = false;
-const spinner = document.getElementById('spinner');
-const errEl   = document.getElementById('err');
+// Pre-fetch match title on load
+fetch('https://streamed.pk/api/matches/football', { cache: 'no-store' })
+  .then(r => r.json())
+  .then(matches => {
+    const m = matches.find(x => x.sources?.some(s => s.source === 'golf')) || matches[0];
+    if (m) document.getElementById('match-title').textContent = '⚽ ' + m.title;
+  })
+  .catch(() => {
+    document.getElementById('match-title').textContent = 'FIFA World Cup 2026';
+  });
 
 async function fetchStreamUrl() {
-  // Always fetch fresh — no caching so token is never stale
   const res = await fetch('/stream', { cache: 'no-store' });
-  if (!res.ok) throw new Error(`/stream returned ${res.status}`);
-  const { url } = await res.json();
-  if (!url) throw new Error('No URL in response');
-  return url;
+  if (!res.ok) throw new Error('/stream returned ' + res.status);
+  const data = await res.json();
+  if (!data.url) throw new Error('No URL');
+  return { url: data.url, match: data.match };
 }
 
-document.getElementById('gate').addEventListener('click', async () => {
+let loaded = false;
+
+gate.addEventListener('click', async () => {
   window.open(AD_LINK, '_blank');
-  document.getElementById('gate').style.display = 'none';
+  gate.style.display = 'none';
   spinner.classList.add('on');
   errEl.classList.remove('on');
 
   try {
-    const streamUrl = await fetchStreamUrl();
-
-    // Update HLS beforeRequest referer dynamically
-    player.ready(() => {
-      const tech = player.tech({ IWillNotUseThisInPlugins: true });
-      if (tech?.vhs) {
-        tech.vhs.xhr.beforeRequest = (options) => {
-          try { options.headers = { ...options.headers, 'Referer': new URL(streamUrl).origin + '/' }; } catch(_) {}
-          return options;
-        };
-      }
-    });
+    const { url: streamUrl, match } = await fetchStreamUrl();
 
     if (!loaded) {
       loaded = true;
       player.src({ src: streamUrl, type: 'application/x-mpegURL' });
+    }
+
+    if (match) {
+      document.getElementById('match-title').textContent = '⚽ ' + match;
+      document.getElementById('match-label').textContent = '⚽ ' + match;
     }
 
     player.muted(false);
@@ -135,16 +143,16 @@ document.getElementById('gate').addEventListener('click', async () => {
     showUI();
 
   } catch (err) {
-    console.error('Stream fetch failed:', err);
+    console.error(err);
     spinner.classList.remove('on');
     errEl.classList.add('on');
-    // Allow retry by re-showing gate after 3s
-    setTimeout(() => {
-      loaded = false;
-      errEl.classList.remove('on');
-      document.getElementById('gate').style.display = 'flex';
-    }, 3000);
   }
+});
+
+errEl.addEventListener('click', () => {
+  errEl.classList.remove('on');
+  loaded = false;
+  gate.style.display = 'flex';
 });
 
 function togglePlay(e) {
@@ -188,12 +196,11 @@ player.on('canplay', () => spinner.classList.remove('on'));
 player.on('error',   () => {
   spinner.classList.remove('on');
   errEl.classList.add('on');
-  // Auto-retry with a fresh URL after 4s on playback error
   setTimeout(async () => {
     errEl.classList.remove('on');
     spinner.classList.add('on');
     try {
-      const streamUrl = await fetchStreamUrl();
+      const { url: streamUrl } = await fetchStreamUrl();
       loaded = true;
       player.src({ src: streamUrl, type: 'application/x-mpegURL' });
       player.play();
@@ -205,7 +212,6 @@ player.on('error',   () => {
 });
 
 let hTimer;
-const bar = document.getElementById('bar');
 function showUI(persist) {
   bar.classList.add('on');
   clearTimeout(hTimer);
