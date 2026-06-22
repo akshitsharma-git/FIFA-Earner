@@ -1,0 +1,127 @@
+name: Update DSports Stream URL
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # every 30 minutes, 24/7
+  workflow_dispatch:           # also allow manual trigger from Actions tab
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Fetch DSports URL from API
+        id: capture
+        run: |
+          node << 'SCRIPT'
+          const https = require('https');
+
+          const API = 'https://iptv-eldbert.xyz/iptv/channels.json';
+
+          console.log('🔍 Fetching channel list from API...');
+
+          https.get(API, (res) => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+              try {
+                const channels = JSON.parse(data);
+                console.log(`📺 Total channels: ${channels.length}`);
+
+                // ── Priority order: try FIFA World Cup group first, then any DSports ──
+                let match = null;
+
+                // 1) FIFA World Cup group, DSports (not DSports Plus)
+                match = channels.find(ch =>
+                  ch.group === 'FIFA World Cup' &&
+                  ch.name.includes('DSports') &&
+                  !ch.name.includes('Plus')
+                );
+
+                // 2) Fallback: any active DSports channel
+                if (!match) {
+                  match = channels.find(ch =>
+                    ch.name.includes('DSports') &&
+                    !ch.name.includes('Plus') &&
+                    ch.status === 'active'
+                  );
+                }
+
+                // 3) Last resort: any DSports
+                if (!match) {
+                  match = channels.find(ch => ch.name.includes('DSports'));
+                }
+
+                if (!match) {
+                  console.error('❌ No DSports channel found in API response');
+                  // Log available groups to help debug
+                  const groups = [...new Set(channels.map(c => c.group))];
+                  console.log('Available groups:', groups.join(', '));
+                  process.exit(1);
+                }
+
+                console.log(`✅ Found: ${match.name} | Group: ${match.group} | Status: ${match.status}`);
+
+                // Wrap in proxy to handle Referer + CORS
+                const encoded = encodeURIComponent(match.url);
+                const proxyUrl = `https://iptv-eldbert.xyz/proxy?url=${encoded}`;
+
+                console.log(`\n🔗 Proxy URL:\n${proxyUrl}\n`);
+
+                const fs = require('fs');
+                fs.appendFileSync(process.env.GITHUB_OUTPUT, `stream_url=${proxyUrl}\n`);
+                process.exit(0);
+
+              } catch (err) {
+                console.error('❌ JSON parse error:', err.message);
+                process.exit(1);
+              }
+            });
+          }).on('error', err => {
+            console.error('❌ Network error:', err.message);
+            process.exit(1);
+          });
+          SCRIPT
+
+      - name: Update index.html if URL changed
+        if: success()
+        run: |
+          NEW_URL="${{ steps.capture.outputs.stream_url }}"
+          CURRENT_URL=$(grep -o 'const STREAM_URL = "[^"]*"' index.html | cut -d'"' -f2 || echo "")
+
+          echo "Current : $CURRENT_URL"
+          echo "New     : $NEW_URL"
+
+          if [ -z "$NEW_URL" ]; then
+            echo "⚠️ No URL captured, skipping update"
+            echo "URL_UPDATED=false" >> $GITHUB_ENV
+          elif [ "$CURRENT_URL" = "$NEW_URL" ]; then
+            echo "✅ URL unchanged, no commit needed"
+            echo "URL_UPDATED=false" >> $GITHUB_ENV
+          else
+            echo "🔄 URL changed — updating index.html"
+            sed -i "s|const STREAM_URL = \"[^\"]*\"|const STREAM_URL = \"$NEW_URL\"|g" index.html
+            echo "URL_UPDATED=true" >> $GITHUB_ENV
+          fi
+
+      - name: Commit and push
+        if: env.URL_UPDATED == 'true'
+        run: |
+          git config user.name  "stream-bot[bot]"
+          git config user.email "stream-bot@users.noreply.github.com"
+          git add index.html
+          git commit -m "chore: update DSports stream URL [$(date -u +'%Y-%m-%d %H:%M UTC')] [skip ci]"
+          git push origin main

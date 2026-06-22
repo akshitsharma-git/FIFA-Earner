@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>FIFA Live</title>
+<link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column}
+#wrap{position:relative;width:100vw;flex:1;overflow:hidden}
+.video-js{width:100%!important;height:100%!important}
+.vjs-control-bar,.vjs-big-play-button,.vjs-loading-spinner,.vjs-poster{display:none!important}
+
+#gate{position:absolute;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:50;cursor:pointer}
+#gate-btn{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.95);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 8px rgba(255,255,255,.08)}
+#gate-btn svg{width:30px;height:30px;margin-left:4px}
+
+#spinner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;display:none;z-index:15;animation:spin .8s linear infinite}
+#spinner.on{display:block}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+
+#bar{position:absolute;bottom:0;left:0;right:0;padding:28px 14px 10px;background:linear-gradient(to top,rgba(0,0,0,.75),transparent);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
+#bar.on{opacity:1;pointer-events:auto}
+
+#track{position:relative;height:3px;background:rgba(255,255,255,.25);border-radius:2px;margin-bottom:8px;overflow:hidden}
+#fill{position:absolute;inset:0;background:#e50914;border-radius:2px}
+
+#row{display:flex;align-items:center;justify-content:space-between;color:#fff}
+.left,.right{display:flex;align-items:center;gap:12px}
+.btn{background:none;border:none;color:#fff;cursor:pointer;padding:5px;display:flex;align-items:center;touch-action:manipulation}
+.btn svg{width:20px;height:20px}
+.live{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;letter-spacing:.6px}
+.live .dot{width:7px;height:7px;border-radius:50%;background:#e50914}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <video id="v" class="video-js" playsinline></video>
+
+  <div id="gate">
+    <div id="gate-btn">
+      <svg viewBox="0 0 24 24" fill="#000"><polygon points="6,4 20,12 6,20"/></svg>
+    </div>
+  </div>
+
+  <div id="spinner"></div>
+
+  <div id="bar">
+    <div id="track"><div id="fill"></div></div>
+    <div id="row">
+      <div class="left">
+        <button class="btn" id="pbtn" onclick="togglePlay(event)">
+          <svg id="pico" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
+        </button>
+        <button class="btn" onclick="toggleMute(event)">
+          <svg id="mico" viewBox="0 0 24 24" fill="#fff"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="#fff" stroke-width="1.6" fill="none"/><path d="M19 6a8 8 0 0 1 0 12" stroke="#fff" stroke-width="1.6" fill="none"/></svg>
+        </button>
+      </div>
+      <div class="right">
+        <div class="live"><span class="dot"></span>LIVE</div>
+        <button class="btn" onclick="goFS(event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+<script>
+const STREAM_URL = "";
+const AD_LINK    = "https://www.effectivecpmnetwork.com/zf2t6d5h?key=672b8fd8d1cc28fa982c9a09616e9ba6";
+
+const player = videojs('v', {
+  controls: false, autoplay: false, liveui: true,
+  html5: {
+    nativeAudioTracks: false, nativeVideoTracks: false,
+    vhs: {
+      GOAL_BUFFER_LENGTH: 10, MAX_GOAL_BUFFER_LENGTH: 20,
+      BACK_BUFFER_LENGTH: 5, bandwidth: 1500000,
+      enableLowInitialPlaylist: true, smoothQualityChange: true,
+      fastQualityChange: true, overrideNative: true
+    },
+    hls: {
+      beforeRequest(o) {
+        o.headers = { ...o.headers, 'Referer': new URL(STREAM_URL).origin + '/' };
+        return o;
+      }
+    }
+  }
+});
+
+let loaded = false;
+document.getElementById('gate').addEventListener('click', () => {
+  window.open(AD_LINK, '_blank');
+  document.getElementById('gate').style.display = 'none';
+  if (!loaded) { loaded = true; player.src({ src: STREAM_URL, type: 'application/x-mpegURL' }); }
+  player.muted(false);
+  const p = player.play();
+  if (p?.catch) p.catch(() => { player.muted(true); player.play(); syncMuteIcon(); });
+  syncMuteIcon(); showUI();
+});
+
+function togglePlay(e) {
+  e?.stopPropagation();
+  player.paused() ? (catchUp(), player.play()) : player.pause();
+  showUI();
+}
+function toggleMute(e) { e?.stopPropagation(); player.muted(!player.muted()); syncMuteIcon(); }
+function goFS(e) {
+  e?.stopPropagation();
+  const el = document.getElementById('wrap');
+  document.fullscreenElement ? document.exitFullscreen?.() || document.webkitExitFullscreen?.()
+    : el.requestFullscreen?.() || el.webkitRequestFullscreen?.();
+}
+
+function syncMuteIcon() {
+  document.getElementById('mico').innerHTML = player.muted()
+    ? '<path d="M3 9v6h4l5 5V4L7 9H3z"/><line x1="16" y1="8" x2="22" y2="16" stroke="#fff" stroke-width="2"/><line x1="22" y1="8" x2="16" y2="16" stroke="#fff" stroke-width="2"/>'
+    : '<path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="#fff" stroke-width="1.6" fill="none"/><path d="M19 6a8 8 0 0 1 0 12" stroke="#fff" stroke-width="1.6" fill="none"/>';
+}
+
+function setIcon(el, pause) {
+  el.innerHTML = pause
+    ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
+    : '<polygon points="6,4 20,12 6,20"/>';
+}
+
+const DRIFT = 15;
+function catchUp() {
+  try {
+    const s = player.seekable();
+    if (s?.length) { const e = s.end(s.length-1); if (e - player.currentTime() > DRIFT) player.currentTime(e - 2); }
+  } catch(_){}
+}
+
+player.on('play',    () => setIcon(document.getElementById('pico'), true));
+player.on('pause',   () => { setIcon(document.getElementById('pico'), false); showUI(true); });
+player.on('waiting', () => document.getElementById('spinner').classList.add('on'));
+player.on('playing', () => document.getElementById('spinner').classList.remove('on'));
+player.on('canplay', () => document.getElementById('spinner').classList.remove('on'));
+
+let hTimer;
+const bar = document.getElementById('bar');
+function showUI(persist) {
+  bar.classList.add('on');
+  clearTimeout(hTimer);
+  if (!persist) hTimer = setTimeout(() => { if (!player.paused()) bar.classList.remove('on'); }, 2500);
+}
+
+let lastTap = 0, tapTimer;
+const wrap = document.getElementById('wrap');
+wrap.addEventListener('click', e => {
+  if (e.target.closest('#bar') || e.target.closest('#gate')) return;
+  const now = Date.now(), gap = now - lastTap;
+  if (gap > 0 && gap < 350) { clearTimeout(tapTimer); lastTap = 0; goFS(); }
+  else { lastTap = now; tapTimer = setTimeout(() => togglePlay(), 300); }
+});
+wrap.addEventListener('mousemove', () => showUI());
+wrap.addEventListener('touchstart', () => showUI());
+wrap.addEventListener('mouseleave', () => { if (!player.paused()) bar.classList.remove('on'); });
+</script>
+</body>
+</html>
