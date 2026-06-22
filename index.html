@@ -4,146 +4,84 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>FIFA Live</title>
-<link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet"/>
 <style>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column}
-#wrap{position:relative;width:100vw;flex:1;overflow:hidden}
-.video-js{width:100%!important;height:100%!important}
-.vjs-control-bar,.vjs-big-play-button,.vjs-loading-spinner,.vjs-poster{display:none!important}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;background:#000;overflow:hidden;font-family:-apple-system,Helvetica,sans-serif}
+#wrap{position:relative;width:100vw;height:100vh}
 
-#gate{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;cursor:pointer;gap:16px}
-#gate-btn{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.95);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 8px rgba(255,255,255,.08)}
+#gate{position:absolute;inset:0;background:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;cursor:pointer;gap:18px}
+#gate-btn{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.95);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 8px rgba(255,255,255,.08);transition:transform .15s}
+#gate:hover #gate-btn{transform:scale(1.08)}
 #gate-btn svg{width:30px;height:30px;margin-left:4px}
-#match-title{color:rgba(255,255,255,.7);font-size:13px;font-weight:500;letter-spacing:.4px;text-align:center;padding:0 24px}
+#match-title{color:rgba(255,255,255,.75);font-size:14px;font-weight:500;letter-spacing:.3px;text-align:center;padding:0 24px}
+#gate-sub{color:rgba(255,255,255,.35);font-size:11px;letter-spacing:.5px;text-transform:uppercase}
 
-#spinner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;display:none;z-index:15;animation:spin .8s linear infinite}
+#spinner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:65px;height:65px;border-radius:50%;border:5px solid rgba(255,255,255,.15);border-top-color:lightblue;display:none;z-index:15;animation:spin .8s linear infinite}
 #spinner.on{display:block}
 @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 
-#err{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:14px;text-align:center;display:none;z-index:30;padding:16px;line-height:1.8;cursor:pointer}
+#err{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:14px;text-align:center;display:none;z-index:30;padding:20px;line-height:1.8;cursor:pointer;background:rgba(0,0,0,.6);border-radius:12px}
 #err.on{display:block}
 
-#bar{position:absolute;bottom:0;left:0;right:0;padding:28px 14px 10px;background:linear-gradient(to top,rgba(0,0,0,.75),transparent);opacity:0;pointer-events:none;transition:opacity .25s;z-index:20}
-#bar.on{opacity:1;pointer-events:auto}
-#track{position:relative;height:3px;background:rgba(255,255,255,.25);border-radius:2px;margin-bottom:8px;overflow:hidden}
-#fill{position:absolute;inset:0;background:#e50914;border-radius:2px}
-#row{display:flex;align-items:center;justify-content:space-between;color:#fff}
-.left,.right{display:flex;align-items:center;gap:12px}
-.btn{background:none;border:none;color:#fff;cursor:pointer;padding:5px;display:flex;align-items:center;touch-action:manipulation}
-.btn svg{width:20px;height:20px}
-.live{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;letter-spacing:.6px}
-.live .dot{width:7px;height:7px;border-radius:50%;background:#e50914;animation:pulse 1.5s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-#match-label{font-size:11px;color:rgba(255,255,255,.65);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stream-frame{width:100%;height:100%;border:none;display:none;position:absolute;inset:0;z-index:5}
 </style>
 </head>
 <body>
 <div id="wrap">
-  <video id="v" class="video-js" playsinline></video>
+
+  <iframe id="stream-frame" allowfullscreen scrolling="no" allowtransparency allow="autoplay; fullscreen"></iframe>
 
   <div id="gate">
     <div id="gate-btn">
-      <svg viewBox="0 0 24 24" fill="#000"><polygon points="6,4 20,12 6,20"/></svg>
+      <svg viewBox="0 0 24 24" fill="#111"><polygon points="6,4 20,12 6,20"/></svg>
     </div>
     <div id="match-title">Loading match...</div>
+    <div id="gate-sub">Tap to watch live</div>
   </div>
 
   <div id="spinner"></div>
   <div id="err">⚠️ Stream unavailable.<br><span style="font-size:12px;opacity:.6">Tap to retry</span></div>
 
-  <div id="bar">
-    <div id="track"><div id="fill"></div></div>
-    <div id="row">
-      <div class="left">
-        <button class="btn" id="pbtn" onclick="togglePlay(event)">
-          <svg id="pico" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
-        </button>
-        <button class="btn" onclick="toggleMute(event)">
-          <svg id="mico" viewBox="0 0 24 24" fill="#fff"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="#fff" stroke-width="1.6" fill="none"/><path d="M19 6a8 8 0 0 1 0 12" stroke="#fff" stroke-width="1.6" fill="none"/></svg>
-        </button>
-        <div id="match-label"></div>
-      </div>
-      <div class="right">
-        <div class="live"><span class="dot"></span>LIVE</div>
-        <button class="btn" onclick="goFS(event)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
-        </button>
-      </div>
-    </div>
-  </div>
 </div>
 
-<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
 <script>
 const AD_LINK = "https://www.effectivecpmnetwork.com/zf2t6d5h?key=672b8fd8d1cc28fa982c9a09616e9ba6";
 
+const gate    = document.getElementById('gate');
 const spinner = document.getElementById('spinner');
 const errEl   = document.getElementById('err');
-const bar     = document.getElementById('bar');
-const gate    = document.getElementById('gate');
+const frame   = document.getElementById('stream-frame');
 
-const player = videojs('v', {
-  controls: false, autoplay: false, liveui: true,
-  html5: {
-    nativeAudioTracks: false, nativeVideoTracks: false,
-    vhs: {
-      GOAL_BUFFER_LENGTH: 10, MAX_GOAL_BUFFER_LENGTH: 20,
-      BACK_BUFFER_LENGTH: 5, bandwidth: 1500000,
-      enableLowInitialPlaylist: true, smoothQualityChange: true,
-      fastQualityChange: true, overrideNative: true
-    }
-  }
-});
-
-// Pre-fetch match title on load
-fetch('https://streamed.pk/api/matches/football', { cache: 'no-store' })
-  .then(r => r.json())
-  .then(matches => {
-    const m = matches.find(x => x.sources?.some(s => s.source === 'golf')) || matches[0];
-    if (m) document.getElementById('match-title').textContent = '⚽ ' + m.title;
-  })
-  .catch(() => {
-    document.getElementById('match-title').textContent = 'FIFA World Cup 2026';
-  });
-
-async function fetchStreamUrl() {
-  const res = await fetch('/stream', { cache: 'no-store' });
-  if (!res.ok) throw new Error('/stream returned ' + res.status);
-  const data = await res.json();
-  if (!data.url) throw new Error('No URL');
-  return { url: data.url, match: data.match };
+async function fetchLiveMatch() {
+  const res = await fetch('https://streamed.pk/api/matches/football', { cache: 'no-store' });
+  const matches = await res.json();
+  return matches.find(m => m.sources?.some(s => s.source === 'golf')) || matches[0];
 }
 
-let loaded = false;
+fetchLiveMatch().then(m => {
+  if (m) document.getElementById('match-title').textContent = '⚽ ' + m.title;
+}).catch(() => {
+  document.getElementById('match-title').textContent = 'FIFA World Cup 2026';
+});
 
 gate.addEventListener('click', async () => {
   window.open(AD_LINK, '_blank');
   gate.style.display = 'none';
   spinner.classList.add('on');
-  errEl.classList.remove('on');
 
   try {
-    const { url: streamUrl, match } = await fetchStreamUrl();
+    const match = await fetchLiveMatch();
+    if (!match) throw new Error('No match');
 
-    if (!loaded) {
-      loaded = true;
-      player.src({ src: streamUrl, type: 'application/x-mpegURL' });
-    }
+    const golf = match.sources?.find(s => s.source === 'golf');
+    if (!golf) throw new Error('No golf source');
 
-    if (match) {
-      document.getElementById('match-title').textContent = '⚽ ' + match;
-      document.getElementById('match-label').textContent = '⚽ ' + match;
-    }
+    frame.src = `https://embed.st/embed/golf/${golf.id}/1`;
+    frame.style.display = 'block';
+    frame.onload = () => spinner.classList.remove('on');
+    setTimeout(() => spinner.classList.remove('on'), 8000);
 
-    player.muted(false);
-    const p = player.play();
-    if (p?.catch) p.catch(() => { player.muted(true); player.play(); syncMuteIcon(); });
-    syncMuteIcon();
-    showUI();
-
-  } catch (err) {
-    console.error(err);
+  } catch(e) {
     spinner.classList.remove('on');
     errEl.classList.add('on');
   }
@@ -151,84 +89,8 @@ gate.addEventListener('click', async () => {
 
 errEl.addEventListener('click', () => {
   errEl.classList.remove('on');
-  loaded = false;
   gate.style.display = 'flex';
 });
-
-function togglePlay(e) {
-  e?.stopPropagation();
-  player.paused() ? (catchUp(), player.play()) : player.pause();
-  showUI();
-}
-function toggleMute(e) { e?.stopPropagation(); player.muted(!player.muted()); syncMuteIcon(); }
-function goFS(e) {
-  e?.stopPropagation();
-  const el = document.getElementById('wrap');
-  document.fullscreenElement ? document.exitFullscreen?.() || document.webkitExitFullscreen?.()
-    : el.requestFullscreen?.() || el.webkitRequestFullscreen?.();
-}
-
-function syncMuteIcon() {
-  document.getElementById('mico').innerHTML = player.muted()
-    ? '<path d="M3 9v6h4l5 5V4L7 9H3z"/><line x1="16" y1="8" x2="22" y2="16" stroke="#fff" stroke-width="2"/><line x1="22" y1="8" x2="16" y2="16" stroke="#fff" stroke-width="2"/>'
-    : '<path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="#fff" stroke-width="1.6" fill="none"/><path d="M19 6a8 8 0 0 1 0 12" stroke="#fff" stroke-width="1.6" fill="none"/>';
-}
-
-function setIcon(el, pause) {
-  el.innerHTML = pause
-    ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
-    : '<polygon points="6,4 20,12 6,20"/>';
-}
-
-const DRIFT = 15;
-function catchUp() {
-  try {
-    const s = player.seekable();
-    if (s?.length) { const e = s.end(s.length-1); if (e - player.currentTime() > DRIFT) player.currentTime(e - 2); }
-  } catch(_){}
-}
-
-player.on('play',    () => { setIcon(document.getElementById('pico'), true); spinner.classList.remove('on'); });
-player.on('pause',   () => { setIcon(document.getElementById('pico'), false); showUI(true); });
-player.on('waiting', () => spinner.classList.add('on'));
-player.on('playing', () => spinner.classList.remove('on'));
-player.on('canplay', () => spinner.classList.remove('on'));
-player.on('error',   () => {
-  spinner.classList.remove('on');
-  errEl.classList.add('on');
-  setTimeout(async () => {
-    errEl.classList.remove('on');
-    spinner.classList.add('on');
-    try {
-      const { url: streamUrl } = await fetchStreamUrl();
-      loaded = true;
-      player.src({ src: streamUrl, type: 'application/x-mpegURL' });
-      player.play();
-    } catch(_) {
-      spinner.classList.remove('on');
-      errEl.classList.add('on');
-    }
-  }, 4000);
-});
-
-let hTimer;
-function showUI(persist) {
-  bar.classList.add('on');
-  clearTimeout(hTimer);
-  if (!persist) hTimer = setTimeout(() => { if (!player.paused()) bar.classList.remove('on'); }, 2500);
-}
-
-let lastTap = 0, tapTimer;
-const wrap = document.getElementById('wrap');
-wrap.addEventListener('click', e => {
-  if (e.target.closest('#bar') || e.target.closest('#gate')) return;
-  const now = Date.now(), gap = now - lastTap;
-  if (gap > 0 && gap < 350) { clearTimeout(tapTimer); lastTap = 0; goFS(); }
-  else { lastTap = now; tapTimer = setTimeout(() => togglePlay(), 300); }
-});
-wrap.addEventListener('mousemove', () => showUI());
-wrap.addEventListener('touchstart', () => showUI());
-wrap.addEventListener('mouseleave', () => { if (!player.paused()) bar.classList.remove('on'); });
 </script>
 </body>
 </html>
