@@ -47,50 +47,146 @@ html,body{height:100%;background:#000;overflow:hidden;font-family:-apple-system,
 <script>
 const AD_LINK = "https://www.effectivecpmnetwork.com/zf2t6d5h?key=672b8fd8d1cc28fa982c9a09616e9ba6";
 
-const gate    = document.getElementById('gate');
+const gate = document.getElementById('gate');
 const spinner = document.getElementById('spinner');
-const errEl   = document.getElementById('err');
-const frame   = document.getElementById('stream-frame');
+const errEl = document.getElementById('err');
+const frame = document.getElementById('stream-frame');
+const titleEl = document.getElementById('match-title');
 
-async function fetchLiveMatch() {
-  const res = await fetch('https://streamed.pk/api/matches/football', { cache: 'no-store' });
-  const matches = await res.json();
-  return matches.find(m => m.sources?.some(s => s.source === 'golf')) || matches[0];
+function showError(msg = '⚠️ Stream unavailable.') {
+    spinner.classList.remove('on');
+    errEl.innerHTML = `${msg}<br><span style="font-size:12px;opacity:.6">Tap to retry</span>`;
+    errEl.classList.add('on');
 }
 
-fetchLiveMatch().then(m => {
-  if (m) document.getElementById('match-title').textContent = '⚽ ' + m.title;
-}).catch(() => {
-  document.getElementById('match-title').textContent = 'FIFA World Cup 2026';
-});
+async function fetchLiveMatch() {
+    const controller = new AbortController();
+
+    const timeout = setTimeout(() => {
+        controller.abort();
+    }, 10000);
+
+    try {
+        const res = await fetch(
+            'https://streamed.pk/api/matches/football',
+            {
+                cache: 'no-store',
+                signal: controller.signal
+            }
+        );
+
+        clearTimeout(timeout);
+
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+
+        const matches = await res.json();
+
+        if (!Array.isArray(matches) || !matches.length) {
+            throw new Error('No matches');
+        }
+
+        return (
+            matches.find(
+                m => m.sources?.some(
+                    s => s.source === 'golf'
+                )
+            ) || matches[0]
+        );
+
+    } catch (err) {
+        clearTimeout(timeout);
+        throw err;
+    }
+}
+
+(async function loadTitle() {
+    try {
+        const match = await fetchLiveMatch();
+
+        if (match?.title) {
+            titleEl.textContent = '⚽ ' + match.title;
+        } else {
+            titleEl.textContent = 'FIFA Live Stream';
+        }
+    } catch {
+        titleEl.textContent = 'FIFA World Cup 2026';
+    }
+})();
 
 gate.addEventListener('click', async () => {
-  window.open(AD_LINK, '_blank');
-  gate.style.display = 'none';
-  spinner.classList.add('on');
 
-  try {
-    const match = await fetchLiveMatch();
-    if (!match) throw new Error('No match');
+    const adWindow = window.open(AD_LINK, '_blank');
 
-    const golf = match.sources?.find(s => s.source === 'golf');
-    if (!golf) throw new Error('No golf source');
+    if (!adWindow) {
+        console.log('Popup blocked');
+    }
 
-    frame.src = `https://embed.st/embed/golf/${golf.id}/1`;
-    frame.style.display = 'block';
-    frame.onload = () => spinner.classList.remove('on');
-    setTimeout(() => spinner.classList.remove('on'), 8000);
+    gate.style.display = 'none';
+    errEl.classList.remove('on');
+    spinner.classList.add('on');
 
-  } catch(e) {
-    spinner.classList.remove('on');
-    errEl.classList.add('on');
-  }
+    try {
+
+        const match = await fetchLiveMatch();
+
+        if (!match) {
+            throw new Error('No live match');
+        }
+
+        const golf = match.sources?.find(
+            s => s.source === 'golf'
+        );
+
+        if (!golf?.id) {
+            throw new Error('No golf source');
+        }
+
+        frame.style.display = 'block';
+
+        frame.onload = () => {
+            spinner.classList.remove('on');
+        };
+
+        frame.onerror = () => {
+            showError();
+        };
+
+        frame.src = `https://embed.st/embed/golf/${golf.id}/1`;
+
+        setTimeout(() => {
+            spinner.classList.remove('on');
+        }, 8000);
+
+        setTimeout(() => {
+            if (spinner.classList.contains('on')) {
+                showError('⚠️ Stream loading timeout.');
+            }
+        }, 15000);
+
+    } catch (error) {
+
+        console.error(error);
+
+        showError(
+            navigator.onLine
+                ? '⚠️ Stream unavailable.'
+                : '⚠️ No internet connection.'
+        );
+    }
 });
 
 errEl.addEventListener('click', () => {
-  errEl.classList.remove('on');
-  gate.style.display = 'flex';
+
+    errEl.classList.remove('on');
+
+    frame.src = '';
+    frame.style.display = 'none';
+
+    gate.style.display = 'flex';
 });
 </script>
+
 </body>
 </html>
