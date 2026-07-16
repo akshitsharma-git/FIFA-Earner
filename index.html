@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>FIFA Live</title>
+<title>Live Cricket</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
 html,body{height:100%;background:#000;overflow:hidden;font-family:-apple-system,Helvetica,sans-serif}
@@ -68,7 +68,7 @@ async function fetchLiveMatch() {
 
     try {
         const res = await fetch(
-            'https://streamed.pk/api/matches/football',
+            'https://streamed.pk/api/matches/cricket',
             {
                 cache: 'no-store',
                 signal: controller.signal
@@ -90,7 +90,7 @@ async function fetchLiveMatch() {
         return (
             matches.find(
                 m => m.sources?.some(
-                    s => s.source === 'golf'
+                    s => s.source === 'admin'
                 )
             ) || matches[0]
         );
@@ -106,12 +106,12 @@ async function fetchLiveMatch() {
         const match = await fetchLiveMatch();
 
         if (match?.title) {
-            titleEl.textContent = '⚽ ' + match.title;
+            titleEl.textContent = '🏏 ' + match.title;
         } else {
-            titleEl.textContent = 'FIFA Live Stream';
+            titleEl.textContent = 'Cricket Live Stream';
         }
     } catch {
-        titleEl.textContent = 'FIFA World Cup 2026';
+        titleEl.textContent = 'Cricket Live Stream';
     }
 })();
 
@@ -135,12 +135,12 @@ gate.addEventListener('click', async () => {
             throw new Error('No live match');
         }
 
-        const golf = match.sources?.find(
-            s => s.source === 'golf'
+        const admin = match.sources?.find(
+            s => s.source === 'admin'
         );
 
-        if (!golf?.id) {
-            throw new Error('No golf source');
+        if (!admin?.id) {
+            throw new Error('No admin source');
         }
 
         frame.style.display = 'block';
@@ -153,7 +153,7 @@ gate.addEventListener('click', async () => {
             showError();
         };
 
-        frame.src = `https://embed.st/embed/golf/${golf.id}/1`;
+        frame.src = `https://embed.st/embed/admin/${admin.id}/1`;
 
         setTimeout(() => {
             spinner.classList.remove('on');
